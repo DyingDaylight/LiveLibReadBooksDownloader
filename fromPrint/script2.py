@@ -2,14 +2,13 @@ from bs4 import BeautifulSoup
 from requests.exceptions import ConnectTimeout, ReadTimeout
 import requests
 import argparse
+import time  
 import json
-import re
 import csv
 import sys
-import time  
 
 
-def log_in(username, password, max_attempts=5):
+def log_in(username, password, max_attempts=15):
     print(f'\nEstablishing session...')
     
     attempts = 0
@@ -84,7 +83,7 @@ def log_in(username, password, max_attempts=5):
         
     return session
     
-def get_source(session, base_url, max_attempts=5):
+def get_source(session, base_url, max_attempts=15):
     attempts = 0
     while attempts < max_attempts:
         try:
@@ -115,6 +114,8 @@ def get_source(session, base_url, max_attempts=5):
 
         
 def parse_page(source):
+    print(f"\nParsing page...")
+
     classes = {'name': ('a', 'brow-book-name with-cycle'), 
                'author': ('a', 'brow-book-author'), 
                'series': ('a', 'cycle-title'), 
@@ -125,59 +126,89 @@ def parse_page(source):
     soup = BeautifulSoup(source, "html.parser")
     rows = soup.find_all("tr")
     
-    print(len(rows))
-    
-    #for book_card in book_cards:
-    #    book_dict = {}
-    #    
-    #    for field, data in classes.items():
-    #        element = book_card.find(data[0], class_=data[1])
-    #        if element:
-    #            book_dict[field] = element.text
-    #
-    #    element = book_card.find("a", class_="brow-book-name with-cycle")
-    #    book_dict['link'] = element['href']
-    #    book_dicts.append(book_dict)
+    date = ""
+    for row in rows:
+        element = row.find("h2")
+        if element:
+            date = element.text
+            continue
+            
+        book_dict = {}
+        
+        elements = row.find_all("a")
+        book_dict['name'] = elements[0].text
+        
+        if len(elements) > 1:
+            book_dict['author'] = elements[1].text       
+
+        element = row.find("span", class_="rating")
+        book_dict['rating'] = element.get("title")  
+
+        book_dict['date'] = date       
+
+        book_dicts.append(book_dict)
         
     return book_dicts
 
 
 def write_to_csv(dicts):
-    print(f"Writing {len(dicts)}")
-    fields = ['name', 'author', 'series', 'rating', 'link']
-    with open('bookdb2.csv', 'w', newline='', encoding="utf-8") as file: 
+    filename = 'bookdb.csv'
+    
+    print(f"\nWriting {len(dicts)} books to {filename}...")
+    
+    fields = ['name', 'author', 'rating', 'date']
+    with open(filename, 'w', newline='', encoding="utf-8") as file: 
         writer = csv.DictWriter(file, fieldnames = fields)
         writer.writeheader() 
         writer.writerows(dicts)
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("username", help="User name to parse read books for", type=str)
-    parser.add_argument("password", help="Password from LiveLib account", type=str)
+    subs = parser.add_subparsers()
+    subs.required = True
+    
+    online_parser = subs.add_parser('online', help='Download book list')
+    online_parser.add_argument("username", help="User name to parse read books for", type=str)
+    online_parser.add_argument("password", help="Password from LiveLib account", type=str)
+    online_parser.set_defaults(type="online")
+    
+    from_file_parser = subs.add_parser('from_file', help='Read books from html file')
+    from_file_parser.add_argument("filename", help="Path to html file")
+    from_file_parser.set_defaults(type="file")
+    
     args = parser.parse_args()
     
-    username = args.username    
-    password = args.password
-    base_url = f'https://www.livelib.ru/reader/{username}/read/print'
-    print(f"Parsing books for {username}")
-    print(f"From: {base_url}")
+    if args.type == "online":
+        username = args.username    
+        password = args.password
+        base_url = f'https://www.livelib.ru/reader/{username}/read/print'
+        
+        print(f"Parsing books for {username}")
+        print(f"From: {base_url}")
     
-    book_dicts = []
+        try:
+            session = log_in(username, password)
+            source = get_source(session, base_url)
+            
+            #with open("source.html", "w", encoding="utf-8") as f:
+            #    f.write(source)
+        except ValueError as er:
+            print(f"Something went wrong: {er}")
+            sys.exit(0)
+            
+    elif args.type == "file":
+        path = args.filename
     
-    try:
-        session = log_in(username, password)
-        source = get_source(session, base_url)
+        print(f"Parsing books from file {path}")
+    
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                source = f.read()
+        except FileNotFoundError as er:
+            print(f"Unable to read file {path}")
+            sys.exit(0)
         
-        with open("source.html", "w", encoding="utf-8") as f:
-            f.write(source)
-        
-        book_dicts = []
-        
-        #parse_page(source)
+    book_dicts = parse_page(source)
 
-        write_to_csv(book_dicts)
-    except ValueError as er:
-        print(f"Something went wrong: {er}")
-        sys.exit(0)
+    write_to_csv(book_dicts)
