@@ -10,16 +10,18 @@ import sys
 
 def log_in(username, password, max_attempts=15):
     print(f'\nEstablishing session...')
-    
+
     attempts = 0
     while attempts < max_attempts:   
         try:
-            response = requests.get("https://www.livelib.ru/")
+            headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            response = requests.get("https://www.livelib.ru/", headers=headers)
+            break
         except (ConnectTimeout, ReadTimeout):
             attempts += 1
-            time.sleep(10) 
             print(f"\rRetry attempt {attempts}", end = "")
-    
+            time.sleep(10) 
+
     print("" if attempts == 0 else "\n", end = "")
     
     if attempts == max_attempts:
@@ -33,19 +35,10 @@ def log_in(username, password, max_attempts=15):
     
     payload = {'user[login]': username,
                'user[password]': password,
-               #'current_url': 'https://www.livelib.ru/',
-               #'is_new_design': '112019',
-               #'rebuild_menu': 'false',
-               #'popup': 'regform',
-               #'user[redirect]': '',
-               #'user[onclick]': '',
-               #'source': ''
                }
                
     headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-               #"accept": "*/*",
-               #"Accept-Encoding": "gzip, deflate, br",
                "X-Requested-With": "XMLHttpRequest"}
         
     login_url = "https://www.livelib.ru/account/login"
@@ -54,6 +47,7 @@ def log_in(username, password, max_attempts=15):
     while attempts < max_attempts:   
         try:
             response = session.post(login_url, data=payload, headers=headers)
+            break
         except (ConnectTimeout, ReadTimeout):
             attempts += 1
             time.sleep(10) 
@@ -76,10 +70,6 @@ def log_in(username, password, max_attempts=15):
         print("Logged in!") 
     except json.JSONDecodeError as e:
         raise ValueError("Login failed!")
-        
-    print(response_json)
-    print(response.headers)
-    print(response.request.headers)
         
     return session
     
@@ -190,9 +180,6 @@ if __name__ == '__main__':
         try:
             session = log_in(username, password)
             source = get_source(session, base_url)
-            
-            #with open("source.html", "w", encoding="utf-8") as f:
-            #    f.write(source)
         except ValueError as er:
             print(f"Something went wrong: {er}")
             sys.exit(0)
